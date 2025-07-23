@@ -1,17 +1,15 @@
 // backend/middleware/auth.js
-// This file contains middleware functions for authentication and validation.
-
 const jwt = require('jsonwebtoken');
 const { validationResult } = require('express-validator');
-const db = require('../database/database');
-const util = require('util');
+const db = require('../database/database'); // pg-compatible module
 
-db.get = util.promisify(db.get);
-db.run = util.promisify(db.run);
-
-const jwtSecret = process.env.JWT_SECRET;
-if (!jwtSecret) {
+// --- Environment Variable Checks ---
+// Ensure critical secrets are defined at startup.
+if (!process.env.JWT_SECRET) {
     throw new Error("FATAL ERROR: JWT_SECRET is not defined in .env file.");
+}
+if (!process.env.BOT_API_KEY) {
+    console.warn("Warning: BOT_API_KEY is not defined. Bot authentication will fail.");
 }
 
 const ADMIN_TEST_KEY = process.env.ADMIN_TEST_API_KEY;
@@ -19,18 +17,15 @@ const ADMIN_TEST_KEY = process.env.ADMIN_TEST_API_KEY;
 /**
  * Middleware to authenticate a user's JWT token or a special admin test key.
  */
-const authenticateToken = (req, res, next) => {
+const authenticateToken = async (req, res, next) => {
+    // 1. Check for Admin Test Key
     const testKey = req.headers['x-admin-test-key'];
     if (ADMIN_TEST_KEY && testKey === ADMIN_TEST_KEY) {
-        req.user = {
-            userId: 'admin-test-user',
-            email: 'admin-test@example.com',
-            username: 'CURL_Admin',
-            isAdmin: true
-        };
+        req.user = { id: 'admin-test-user', role: 'admin', username: 'CURL_Admin' };
         return next();
     }
-    
+
+    // 2. Check for JWT Token
     const authHeader = req.headers['authorization'];
     const token = authHeader && authHeader.split(' ')[1];
 
@@ -38,31 +33,41 @@ const authenticateToken = (req, res, next) => {
         return res.status(401).json({ message: 'Access token is missing or invalid.' });
     }
 
-    jwt.verify(token, jwtSecret, (err, user) => {
-        if (err) {
-            return res.status(403).json({ message: 'Forbidden: Invalid or expired token.' });
+    // 3. Verify JWT and Fetch User
+    try {
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        const userQuery = 'SELECT id, username, email, balance, role, status, avatar_url FROM users WHERE id = $1';
+        const { rows } = await db.query(userQuery, [decoded.id]);
+        const user = rows[0];
+
+        if (!user) {
+            return res.status(404).json({ message: "User not found." });
         }
+        
         req.user = user;
         next();
-    });
+    } catch (err) {
+        return res.status(403).json({ message: 'Forbidden: Invalid or expired token.' });
+    }
 };
 
 /**
- * [NEW] Middleware to authenticate the bot via its API key.
+ * Middleware to authenticate the bot via its API key.
  */
 const authenticateBot = (req, res, next) => {
     const apiKey = req.headers['x-api-key'];
-    if (!process.env.BOT_API_KEY) {
-        console.error("FATAL ERROR: BOT_API_KEY is not defined in .env file.");
-        return res.status(500).json({ message: 'Server configuration error: BOT_API_KEY missing.' });
+    const botApiKey = process.env.BOT_API_KEY;
+
+    if (!botApiKey) {
+        console.error("Server configuration error: BOT_API_KEY is not defined.");
+        return res.status(500).json({ message: 'Server configuration error.' });
     }
-    if (!apiKey || apiKey !== process.env.BOT_API_KEY) {
-        console.warn(`Unauthorized bot access attempt from IP: ${req.ip} with API Key: ${apiKey}`);
+    if (!apiKey || apiKey !== botApiKey) {
+        console.warn(`Unauthorized bot access attempt from IP: ${req.ip}`);
         return res.status(401).json({ message: 'Unauthorized: Invalid or missing API key.' });
     }
     next();
 };
-
 
 /**
  * Middleware to handle validation errors from express-validator.
@@ -97,25 +102,13 @@ const validatePassword = (password) => {
 
 /**
  * Middleware to check if the authenticated user is an administrator.
+ * This should run *after* authenticateToken.
  */
-const isAdmin = async (req, res, next) => {
-    if (req.user && req.user.isAdmin) {
-        return next();
-    }
-    
-    try {
-        if (!req.user || !req.user.userId) {
-             return res.status(403).json({ message: 'Forbidden: Invalid user token.' });
-        }
-        const user = await db.get('SELECT is_admin FROM users WHERE id = ?', [req.user.userId]);
-        if (user && user.is_admin) {
-            next();
-        } else {
-            res.status(403).json({ message: 'Forbidden: Requires admin privileges.' });
-        }
-    } catch (error) {
-        console.error("Admin check error:", error);
-        res.status(500).json({ message: 'An internal server error occurred during admin check.' });
+const isAdmin = (req, res, next) => {
+    if (req.user && req.user.role === 'admin') {
+        next();
+    } else {
+        res.status(403).json({ message: 'Forbidden: Requires admin privileges.' });
     }
 };
 
@@ -124,5 +117,5 @@ module.exports = {
     handleValidationErrors,
     validatePassword,
     isAdmin,
-    authenticateBot // [NEW] Export the bot authenticator
+    authenticateBot
 };
