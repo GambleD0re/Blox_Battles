@@ -1,42 +1,87 @@
+// v1
 // src/services/api.js
 // This file centralizes all API calls to the backend.
+import axios from 'axios';
 
-const API_BASE_URL = '/api';
+/**
+ * --- Strict API Endpoint Configuration ---
+ * This configuration ensures the frontend can only connect to the backend API
+ * when the endpoint is explicitly defined in an environment variable.
+ *
+ * The `VITE_API_URL` environment variable MUST be set.
+ * - In Production (on Render): This will be set by the Render build process to the
+ * public URL of our deployed backend service (e.g., "https://blox_battles_api.onrender.com/api").
+ * - In Development (Local Machine): You must create a `.env` file in the `frontend`
+ * directory and define `VITE_API_URL=http://localhost:3001/api`.
+ *
+ * If this variable is not found, the application will throw an error and refuse to start.
+ * This prevents a misconfigured deployment from running.
+ */
+const API_BASE_URL = import.meta.env.VITE_API_URL;
 
-// A helper function to handle fetch requests, including authentication.
+if (!API_BASE_URL) {
+  throw new Error(
+    'CRITICAL ERROR: VITE_API_URL is not defined. Please create a .env file in the /frontend directory and set the variable. The application cannot start without a configured backend API endpoint.'
+  );
+}
+
+// Create a global Axios instance.
+// All API requests will be made through this instance, which simplifies configuration.
+const api = axios.create({
+  baseURL: API_BASE_URL,
+  withCredentials: true, // Necessary for sending session cookies for authentication
+});
+
+/**
+ * A helper function to handle API requests using the configured Axios instance.
+ * It automatically includes the auth token in the headers if one is provided.
+ * This function maintains the same signature as the original `apiRequest` for compatibility.
+ * @param {string} endpoint - The API endpoint to call (e.g., '/auth/login').
+ * @param {string} [method='GET'] - The HTTP method to use.
+ * @param {object|null} [body=null] - The request body for POST/PUT requests.
+ * @param {string|null} [token=null] - The user's authentication token.
+ * @returns {Promise<any>} - The data from the API response.
+ */
 const apiRequest = async (endpoint, method = 'GET', body = null, token = null) => {
-    const options = {
+    const config = {
         method,
+        url: endpoint,
         headers: {},
     };
 
-    if (token) {
-        options.headers['Authorization'] = `Bearer ${token}`;
+    // If a token is explicitly passed or found in localStorage, add it to the request.
+    const authToken = token || localStorage.getItem('token');
+    if (authToken) {
+        config.headers['Authorization'] = `Bearer ${authToken}`;
     }
 
     if (body) {
-        options.headers['Content-Type'] = 'application/json';
-        options.body = JSON.stringify(body);
+        config.data = body;
     }
 
     try {
-        const response = await fetch(`${API_BASE_URL}${endpoint}`, options);
-        const data = await response.json();
-
-        if (!response.ok) {
-            throw new Error(data.message || `Error: ${response.status}`);
-        }
-
-        return data;
+        const response = await api(config);
+        return response.data;
     } catch (error) {
-        console.error(`API request failed: ${method} ${endpoint}`, error);
-        throw error;
+        // Log a more descriptive error message.
+        const errorMessage = error.response?.data?.message || error.message || `Error: ${error.request?.status}`;
+        console.error(`API request failed: ${method} ${endpoint}`, {
+            message: errorMessage,
+            status: error.response?.status,
+        });
+        // Re-throw the error with a consistent message format.
+        throw new Error(errorMessage);
     }
 };
+
 
 // --- AUTHENTICATION ---
 export const loginUser = (credentials) => apiRequest('/auth/login', 'POST', credentials);
 export const registerUser = (userData) => apiRequest('/auth/register', 'POST', userData);
+export const googleLogin = () => {
+    // Redirect the user to the backend Google OAuth endpoint.
+    window.location.href = `${API_BASE_URL}/auth/google`;
+};
 
 // --- USER & DASHBOARD ---
 export const getDashboardData = (token) => apiRequest('/user-data', 'GET', null, token);
@@ -47,9 +92,7 @@ export const getTransactionHistory = (token) => apiRequest('/history', 'GET', nu
 
 // --- DUELS & DISPUTES ---
 export const getDuelHistory = (token) => apiRequest('/duels/history', 'GET', null, token);
-// [NEW] This function gets the new, more detailed duel history for the dedicated page.
 export const getDetailedDuelHistory = (token) => apiRequest('/duel-history', 'GET', null, token);
-
 export const findPlayer = (robloxUsername, token) => apiRequest(`/duels/find-player?roblox_username=${encodeURIComponent(robloxUsername)}`, 'GET', null, token);
 export const sendChallenge = (challengeData, token) => apiRequest('/duels/challenge', 'POST', challengeData, token);
 export const respondToDuel = (responseData, token) => apiRequest('/duels/respond', 'POST', responseData, token);
@@ -80,7 +123,7 @@ export const updateWithdrawalDetails = (requestId, details, token) => apiRequest
 // --- SETTINGS ---
 export const updatePassword = (passwordData, token) => apiRequest('/user/password', 'PUT', passwordData, token);
 export const unlinkRoblox = (token) => apiRequest('/user/unlink/roblox', 'POST', null, token);
-export const deleteAccount = (password, token) => apiRequest('/user/delete/account', 'DELETE', { password }, token);
+export const deleteAccount = (password, token) => apiRequest('/user/delete/account', 'DELETE', null, { password }, token);
 export const updateNotificationPreference = (enabled, token) => apiRequest('/user/notification-preference', 'PUT', { enabled }, token);
 
 // --- ADMIN ---
