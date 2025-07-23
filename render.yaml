@@ -66,8 +66,7 @@ services:
   # This serves the user-facing React application from a global CDN.
   - type: web
     name: blox_battles_web
-    runtime: static
-    plan: starter # Static sites can also use the 'free' plan.
+    runtime: static # Static sites can also use the 'free' plan.
     # The 'region' key has been removed as it is not applicable to Static Sites.
     rootDir: ./frontend # Specifies that the frontend code is in the 'frontend' folder.
     buildCommand: npm install && npm run build
@@ -92,5 +91,4 @@ services:
 databases:
   - name: blox_battles_db
     plan: basic-256mb # The plan you specified.
-    region: oregon
-    ipAllowList: [] # IMPORTANT: Starts with no external access. Add IPs if direct access is needed.
+    region: oregon # IMPORTANT: Starts with no external access. Add IPs if direct access is needed.
