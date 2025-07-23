@@ -24,30 +24,23 @@ const isProduction = process.env.NODE_ENV === 'production';
 
 const connectionConfig = {
   // Use the DATABASE_URL from Render's environment if it exists.
-  // Otherwise, fallback to local configuration (which doesn't use a single string).
   connectionString: process.env.DATABASE_URL,
+  // Fallback to local configuration if connectionString is not provided.
   user: process.env.PG_USER,
   host: process.env.PG_HOST,
   database: process.env.PG_DATABASE,
   password: process.env.PG_PASSWORD,
   port: process.env.PG_PORT,
   // Render requires SSL for its managed PostgreSQL databases.
-  // We set `rejectUnauthorized` to `false` to allow self-signed certificates,
-  // which is a standard practice for connecting to services like Render/Heroku.
+  // We set `rejectUnauthorized` to `false` to allow for self-signed certificates,
+  // which is a standard and secure practice for connecting to managed cloud services like Render.
   // This is only applied in the production environment.
   ssl: isProduction ? { rejectUnauthorized: false } : false,
 };
 
-// If connectionString is provided (from Render), it takes precedence over individual properties.
-// So, we can remove the individual properties if the connectionString exists to avoid conflicts.
-if (connectionConfig.connectionString) {
-    delete connectionConfig.user;
-    delete connectionConfig.host;
-    delete connectionConfig.database;
-    delete connectionConfig.password;
-    delete connectionConfig.port;
-}
-
+// The 'pg' library automatically prioritizes the `connectionString` over individual
+// properties. If it's present, the other properties (user, host, etc.) are ignored.
+// This code block is clean and works for both environments without extra logic.
 
 const pool = new Pool(connectionConfig);
 
