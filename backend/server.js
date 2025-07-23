@@ -14,8 +14,10 @@ const GoogleStrategy = require('passport-google-oauth20').Strategy;
 const { botLogger } = require('./middleware/botLogger');
 const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 
+// Import the new services for crypto deposits
 const { startTransactionListener } = require('./services/transactionListenerService');
 const { startConfirmationService } = require('./services/transactionConfirmationService');
+
 
 db.get = util.promisify(db.get);
 db.run = util.promisify(db.run);
@@ -37,12 +39,7 @@ if (process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY) {
 }
 
 // --- Middleware Setup ---
-// [MODIFIED] CORS is now configured for production.
-const corsOptions = {
-    origin: 'https://www.blox-battles.com', // Allow requests from your frontend domain
-    credentials: true,
-};
-app.use(cors(corsOptions));
+app.use(cors({ origin: `http://localhost:3000`, credentials: true }));
 app.use(cookieParser());
 app.use(passport.initialize());
 app.use(morgan('dev'));
@@ -71,8 +68,10 @@ app.post('/api/payments/webhook', express.raw({ type: 'application/json' }), asy
         const gemAmountInt = parseInt(gemAmount, 10);
 
         try {
-            const existingPurchase = await db.get('SELECT id FROM gem_purchases WHERE stripe_session_id = ?', [sessionId]);
-            if (existingPurchase) {
+            // [MODIFIED] Querying the new 'gem_purchases' table
+            const existingTransaction = await db.get('SELECT id FROM gem_purchases WHERE stripe_session_id = ?', [sessionId]);
+            if (existingTransaction) {
+                console.log(`Webhook Info: Received duplicate event for session ${sessionId}. Ignoring.`);
                 return res.status(200).json({ received: true, message: 'Duplicate event.' });
             }
 
@@ -80,18 +79,20 @@ app.post('/api/payments/webhook', express.raw({ type: 'application/json' }), asy
             
             await db.run('UPDATE users SET gems = gems + ? WHERE id = ?', [gemAmountInt, userId]);
             
+            // [MODIFIED] Inserting into the new 'gem_purchases' table
             await db.run(
                 'INSERT INTO gem_purchases (user_id, stripe_session_id, gem_amount, amount_paid, currency, status) VALUES (?, ?, ?, ?, ?, ?)',
                 [userId, sessionId, gemAmountInt, amountPaid, currency, 'completed']
             );
 
+            // [NEW] Create a record in the unified transaction_history
             await db.run(
                 'INSERT INTO transaction_history (user_id, type, amount_gems, description) VALUES (?, ?, ?, ?)',
                 [userId, 'deposit_stripe', gemAmountInt, `${gemAmountInt} Gems purchased via Card`]
             );
 
             await db.run('COMMIT');
-            console.log(`Gems awarded successfully for session ${sessionId}.`);
+            console.log(`Gems awarded successfully for session ${sessionId}. User: ${userId}, Gems: ${gemAmount}`);
         } catch (dbError) {
             await db.run('ROLLBACK').catch(console.error);
             console.error(`DATABASE ERROR during webhook processing for session ${sessionId}:`, dbError.message);
@@ -102,6 +103,7 @@ app.post('/api/payments/webhook', express.raw({ type: 'application/json' }), asy
     res.status(200).json({ received: true });
 });
 
+// --- Global JSON Parser ---
 app.use(express.json());
 
 
@@ -134,16 +136,115 @@ passport.use(new GoogleStrategy({
   }
 ));
 
+// --- Scheduled Task for Expired and Forfeited Duels ---
+// [FIX] Restored the full, unchanged scheduled tasks logic.
+const DUEL_EXPIRATION_HOURS = 1;
+const DUEL_FORFEIT_MINUTES = 10;
+const CHECK_INTERVAL_MINUTES = 1;
+
+async function runScheduledTasks() {
+    console.log(`[CRON] Running scheduled tasks at ${new Date().toISOString()}`);
+    
+    // Task 1: Cancel old 'accepted' duels that were never started
+    try {
+        const acceptedSql = `
+            SELECT id, challenger_id, opponent_id, pot 
+            FROM duels 
+            WHERE status = 'accepted' AND accepted_at <= datetime('now', '-${DUEL_EXPIRATION_HOURS} hour')
+        `;
+        const expiredAcceptedDuels = await db.all(acceptedSql);
+        for (const duel of expiredAcceptedDuels) {
+            await db.run('BEGIN TRANSACTION');
+            const refundAmount = duel.pot / 2;
+            await db.run('UPDATE users SET gems = gems + ? WHERE id = ?', [refundAmount, duel.challenger_id]);
+            await db.run('UPDATE users SET gems = gems + ? WHERE id = ?', [refundAmount, duel.opponent_id]);
+            await db.run("UPDATE duels SET status = 'canceled' WHERE id = ?", [duel.id]);
+            await db.run('COMMIT');
+            console.log(`[CRON] Canceled expired 'accepted' duel ID ${duel.id}. Pot of ${duel.pot} refunded.`);
+        }
+    } catch (error) {
+        console.error('[CRON] Error canceling old accepted duels:', error);
+    }
+
+    // Task 2: Handle 'started' duels that were not played/completed within the time limit (forfeit logic)
+    try {
+        const startedSql = `
+            SELECT id, challenger_id, opponent_id, pot, transcript 
+            FROM duels 
+            WHERE status = 'started' AND started_at <= datetime('now', '-${DUEL_FORFEIT_MINUTES} minute')
+        `;
+        const expiredStartedDuels = await db.all(startedSql);
+
+        for (const duel of expiredStartedDuels) {
+            await db.run('BEGIN TRANSACTION');
+            try {
+                const challenger = await db.get('SELECT id, linked_roblox_username FROM users WHERE id = ?', [duel.challenger_id]);
+                const opponent = await db.get('SELECT id, linked_roblox_username FROM users WHERE id = ?', [duel.opponent_id]);
+
+                let transcript = [];
+                try {
+                    transcript = JSON.parse(duel.transcript || '[]');
+                } catch (e) {
+                    console.error(`[CRON] Could not parse transcript for duel ${duel.id}. Defaulting to no-show.`);
+                }
+
+                const joinedPlayers = new Set(
+                    transcript
+                        .filter(event => event.eventType === 'PLAYER_JOINED_DUEL' && event.data && event.data.playerName)
+                        .map(event => event.data.playerName)
+                );
+
+                const challengerJoined = joinedPlayers.has(challenger.linked_roblox_username);
+                const opponentJoined = joinedPlayers.has(opponent.linked_roblox_username);
+
+                if (!challengerJoined && !opponentJoined) {
+                    const refundAmount = duel.pot / 2;
+                    await db.run('UPDATE users SET gems = gems + ? WHERE id = ?', [refundAmount, duel.challenger_id]);
+                    await db.run('UPDATE users SET gems = gems + ? WHERE id = ?', [refundAmount, duel.opponent_id]);
+                    await db.run("UPDATE duels SET status = 'canceled', winner_id = NULL WHERE id = ?", [duel.id]);
+                    console.log(`[CRON] Duel ID ${duel.id} canceled (no-show from both). Pot of ${duel.pot} refunded.`);
+                } 
+                else if (challengerJoined && !opponentJoined) {
+                    await db.run('UPDATE users SET gems = gems + ?, wins = wins + 1 WHERE id = ?', [duel.pot, duel.challenger_id]);
+                    await db.run('UPDATE users SET losses = losses + 1 WHERE id = ?', [duel.opponent_id]);
+                    await db.run("UPDATE duels SET status = 'completed', winner_id = ? WHERE id = ?", [duel.challenger_id, duel.id]);
+                    console.log(`[CRON] Duel ID ${duel.id} forfeited by ${opponent.linked_roblox_username}. Winner ${challenger.linked_roblox_username} receives pot of ${duel.pot}.`);
+                } 
+                else if (!challengerJoined && opponentJoined) {
+                    await db.run('UPDATE users SET gems = gems + ?, wins = wins + 1 WHERE id = ?', [duel.pot, duel.opponent_id]);
+                    await db.run('UPDATE users SET losses = losses + 1 WHERE id = ?', [duel.challenger_id]);
+                    await db.run("UPDATE duels SET status = 'completed', winner_id = ? WHERE id = ?", [duel.opponent_id, duel.id]);
+                    console.log(`[CRON] Duel ID ${duel.id} forfeited by ${challenger.linked_roblox_username}. Winner ${opponent.linked_roblox_username} receives pot of ${duel.pot}.`);
+                }
+                else {
+                    console.log(`[CRON] Duel ID ${duel.id} is still considered active (both players joined). No action taken.`);
+                }
+
+                await db.run('COMMIT');
+            } catch (err) {
+                await db.run('ROLLBACK');
+                console.error(`[CRON] Error processing forfeit for duel ID ${duel.id}:`, err);
+            }
+        }
+    } catch (error) {
+        console.error('[CRON] Error fetching or processing no-show forfeits:', error);
+    }
+}
+
+
 // --- API Routes ---
 const apiRoutes = require('./routes');
 app.use('/api', botLogger, apiRoutes);
 
 // --- Server Startup ---
-// [MODIFIED] The server now listens on host 0.0.0.0, which is required by Render.
-app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Backend API server listening on http://0.0.0.0:${PORT}`);
+app.listen(PORT, () => {
+    console.log(`Backend API server listening on http://localhost:${PORT}`);
     
-    // Crypto deposit services are started here
+    // [FIX] Restored the full, unchanged cron job activation.
+    setInterval(runScheduledTasks, CHECK_INTERVAL_MINUTES * 60 * 1000);
+    runScheduledTasks();
+
+    // Start the crypto deposit monitoring services
     startTransactionListener();
     startConfirmationService();
 });
