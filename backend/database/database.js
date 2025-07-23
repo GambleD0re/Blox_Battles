@@ -1,77 +1,49 @@
-// v1
-const { Pool } = require('pg');
+// backend/database/database.js
 
-// In development, load environment variables from the .env file located in the backend directory.
-// In production (like on Render), these variables will be set directly in the environment.
-if (process.env.NODE_ENV !== 'production') {
-  require('dotenv').config({ path: __dirname + '/../.env' });
+const { Pool } = require('pg');
+const fs = require('fs');
+const path = require('path');
+
+// Check for the DATABASE_URL environment variable, which is standard for services like Render.
+if (!process.env.DATABASE_URL) {
+  throw new Error("DATABASE_URL environment variable is not set. Please configure it in your deployment environment.");
 }
 
-// --- Database Connection Configuration ---
-// This logic ensures the application can connect to the database in both
-// local development and the Render production environment.
-//
-// 1. In Production (on Render):
-//    Render provides a single, secure `DATABASE_URL` environment variable.
-//    We use this URL directly and enable SSL, which Render requires.
-//
-// 2. In Development (Local Machine):
-//    If `DATABASE_URL` is not found, we assume a local environment and
-//    construct the connection details from the individual PG_* variables
-//    in the .env file. SSL is disabled for local connections.
-
-const isProduction = process.env.NODE_ENV === 'production';
-
-const connectionConfig = {
-  // Use the DATABASE_URL from Render's environment if it exists.
+// Create a new pool instance to connect to your PostgreSQL database.
+// The 'pg' library automatically uses the DATABASE_URL environment variable.
+const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  // Fallback to local configuration if connectionString is not provided.
-  user: process.env.PG_USER,
-  host: process.env.PG_HOST,
-  database: process.env.PG_DATABASE,
-  password: process.env.PG_PASSWORD,
-  port: process.env.PG_PORT,
-  // Render requires SSL for its managed PostgreSQL databases.
-  // We set `rejectUnauthorized` to `false` to allow for self-signed certificates,
-  // which is a standard and secure practice for connecting to managed cloud services like Render.
-  // This is only applied in the production environment.
-  ssl: isProduction ? { rejectUnauthorized: false } : false,
+  // If you're using this on a platform that requires SSL for database connections (like Render),
+  // you might need to enable it like this.
+  ssl: {
+    rejectUnauthorized: false
+  }
+});
+
+// Test the connection
+pool.query('SELECT NOW()', (err, res) => {
+  if (err) {
+    console.error('Error connecting to the PostgreSQL database', err.stack);
+  } else {
+    console.log('Successfully connected to the PostgreSQL database.');
+    // Initialize the database schema if it hasn't been initialized.
+    initializeSchema();
+  }
+});
+
+// Function to read the schema.sql file and execute it.
+const initializeSchema = async () => {
+  try {
+    const schemaSql = fs.readFileSync(path.join(__dirname, 'schema.sql')).toString();
+    await pool.query(schemaSql);
+    console.log('Database schema checked/initialized successfully.');
+  } catch (err) {
+    console.error('Error initializing database schema:', err);
+  }
 };
 
-// The 'pg' library automatically prioritizes the `connectionString` over individual
-// properties. If it's present, the other properties (user, host, etc.) are ignored.
-// This code block is clean and works for both environments without extra logic.
-
-const pool = new Pool(connectionConfig);
-
-/**
- * Tests the connection to the database to ensure it's configured correctly.
- * Logs a success or error message to the console.
- */
-async function testConnection() {
-  let client;
-  try {
-    client = await pool.connect();
-    console.log('Successfully connected to the database.');
-  } catch (error) {
-    console.error('Failed to connect to the database:', error);
-    // In case of a connection error, log more details if they are available.
-    if (error.routine) {
-        console.error(`Database Error Details:
-        - Routine: ${error.routine}
-        - Code: ${error.code}
-        - Message: ${error.message}`);
-    }
-  } finally {
-    // Ensure the client is always released back to the pool.
-    if (client) {
-      client.release();
-    }
-  }
-}
-
-// Export the query function and the test function for use throughout the application.
+// Export an object with a query method that uses the pool.
+// This makes it a near drop-in replacement for the old db object.
 module.exports = {
   query: (text, params) => pool.query(text, params),
-  testConnection,
 };
