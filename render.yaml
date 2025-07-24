@@ -24,7 +24,7 @@ services:
     healthCheckPath: /api/health # You will need to add a simple '/api/health' route to your backend
 
     # --- Persistent Disk for SQLite Database ---
-    disks:
+    disk:
       - name: sqlite-db
         mountPath: /var/data/db # The directory where the disk will be available
         plan: basic-256mb # 1 GB is the smallest size, should be plenty
