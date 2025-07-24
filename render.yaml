@@ -7,7 +7,7 @@ services:
   # Backend Web Service (Node.js)
   # ------------------
   - type: web
-    name: blox-battles-api # The name of your backend service
+    name: blox_battles_api # The name of your backend service
     runtime: node
     region: oregon # Or your preferred region: oregon, frankfurt, ohio, singapore
     plan: starter # 'starter' is free, upgrade as needed
@@ -45,8 +45,9 @@ services:
   # ------------------
   # Frontend Static Site (React)
   # ------------------
-  - type: static
-    name: blox-battles-client # The name of your frontend service
+  - type: web
+    name: blox_battlesWeb # The name of your frontend service
+    runtime: static
     
     # --- Build & Deploy Configuration ---
     repo: https://github.com/GambleD0re/Blox_Battles.git # Your GitHub repo URL
@@ -69,5 +70,5 @@ services:
       - key: VITE_API_URL
         fromService:
           type: web
-          name: blox-battles-api # Must match the backend service name
+          name: blox_battles_api # Must match the backend service name
           envVarKey: URL
