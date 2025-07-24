@@ -16,7 +16,7 @@ services:
     rootDir: ./backend # Specifies that the backend code is in the 'backend' folder.
     buildCommand: npm install
     startCommand: node server.js
-    healthCheckPath: /status # Endpoint to check if the service is running.
+    healthCheckPath: /api/status/health # Endpoint to check if the service is running.
     envVars:
       - key: NODE_ENV
         value: production
