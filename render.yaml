@@ -1,0 +1,73 @@
+# render.yaml
+# Blueprint for deploying the Blox Battles full-stack application on Render.
+# This file should be placed in the root directory of your GitHub repository.
+
+services:
+  # ------------------
+  # Backend Web Service (Node.js)
+  # ------------------
+  - type: web
+    name: blox-battles-api # The name of your backend service
+    runtime: node
+    region: oregon # Or your preferred region: oregon, frankfurt, ohio, singapore
+    plan: starter # 'starter' is free, upgrade as needed
+    
+    # --- Build & Start Configuration ---
+    repo: https://github.com/GambleD0re/Blox_Battles.git # Your GitHub repo URL
+    branch: main # Or your primary branch name
+    rootDir: ./backend # Specifies that commands should run from the 'backend' folder
+    buildCommand: npm install # Installs backend dependencies
+    startCommand: node server.js # The command to start the server
+
+    # --- Health Check ---
+    # Render uses this to determine if your service is running correctly.
+    healthCheckPath: /api/health # You will need to add a simple '/api/health' route to your backend
+
+    # --- Persistent Disk for SQLite Database ---
+    disks:
+      - name: sqlite-db
+        mountPath: /var/data/db # The directory where the disk will be available
+        plan: basic-256mb # 1 GB is the smallest size, should be plenty
+
+    # --- Environment Variables ---
+    # Secrets should be set in the Render dashboard, not here.
+    # The DATABASE_PATH is crucial for telling the app where to find the database on the disk.
+    envVars:
+      - key: DATABASE_PATH
+        value: /var/data/db/blox_battles.db
+      - key: NODE_ENV
+        value: production
+      - key: JWT_SECRET
+        sync: false # Mark as a secret to be set in the dashboard
+      - key: BOT_API_KEY
+        sync: false # Mark as a secret to be set in the dashboard
+
+  # ------------------
+  # Frontend Static Site (React)
+  # ------------------
+  - type: static
+    name: blox-battles-client # The name of your frontend service
+    
+    # --- Build & Deploy Configuration ---
+    repo: https://github.com/GambleD0re/Blox_Battles.git # Your GitHub repo URL
+    branch: main # Or your primary branch name
+    rootDir: ./frontend # Specifies that commands should run from the 'frontend' folder
+    buildCommand: npm install && npm run build # Installs dependencies and builds the React app
+    publishDir: ./dist # The folder containing the built static files (output of 'npm run build')
+
+    # --- SPA Rewrite Rule ---
+    # This is critical for single-page applications like React. It ensures that all
+    # navigation requests are redirected to index.html so client-side routing works.
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+
+    # --- Environment Variables ---
+    # This automatically injects the live backend URL into your frontend build process.
+    envVars:
+      - key: VITE_API_URL
+        fromService:
+          type: web
+          name: blox-battles-api # Must match the backend service name
+          envVarKey: URL
