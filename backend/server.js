@@ -21,37 +21,35 @@ const gameDataRoutes = require('./routes/gameData');
 const historyRoutes = require('./routes/history');
 const inboxRoutes = require('./routes/inbox');
 const leaderboardRoutes = require('./routes/leaderboard');
-const logRoutes = require('./routes/logs');
+const logRoutes = require('./routes/logs'); // For viewing server logs
 const paymentRoutes = require('./routes/payments');
 const payoutRoutes = require('./routes/payouts');
 const statusRoutes = require('./routes/status');
 const subscriptionRoutes = require('./routes/subscriptions');
 const taskRoutes = require('./routes/tasks');
 const userRoutes = require('./routes/users');
+const botRoutes = require('./routes/bot'); // For receiving bot events
 const { cleanupExpiredDuels } = require('./utils/duelUtils');
 
 const app = express();
 const PORT = process.env.PORT || 10000;
 
 // --- CORS Configuration ---
-// This is the critical part. We are explicitly telling the backend
-// to trust and allow requests coming from our deployed frontend URL.
+// This explicitly allows your deployed frontend to make requests to this backend.
 const allowedOrigins = [
     'https://blox-battles-web.onrender.com',
-    'http://localhost:5173' // Also allow your local dev environment for testing
+    'http://localhost:5173' // For local development
 ];
 
 const corsOptions = {
     origin: (origin, callback) => {
-        // Allow requests with no origin (like mobile apps or curl requests)
-        if (!origin) return callback(null, true);
-        if (allowedOrigins.indexOf(origin) === -1) {
-            const msg = 'The CORS policy for this site does not allow access from the specified Origin.';
-            return callback(new Error(msg), false);
+        if (!origin || allowedOrigins.indexOf(origin) !== -1) {
+            callback(null, true);
+        } else {
+            callback(new Error('Not allowed by CORS'));
         }
-        return callback(null, true);
     },
-    credentials: true, // This is important for sessions and cookies
+    credentials: true,
 };
 app.use(cors(corsOptions));
 
@@ -76,7 +74,7 @@ app.use(session({
 app.use(passport.initialize());
 app.use(passport.session());
 
-// --- Routes ---
+// --- API Routes ---
 console.log("--- Loading backend routes ---");
 app.use('/api/auth', authRoutes);
 app.use('/api/admin', adminRoutes);
@@ -93,6 +91,7 @@ app.use('/api/status', statusRoutes);
 app.use('/api/subscriptions', subscriptionRoutes);
 app.use('/api/tasks', taskRoutes);
 app.use('/api/user', userRoutes);
+app.use('/api/bot', botRoutes); // Activate the new bot route
 console.log("--- Finished loading backend routes. ---");
 
 
@@ -104,7 +103,7 @@ async function initializeApp() {
         await db.initSchema();
         console.log('Database schema checked/initialized successfully.');
 
-        console.log('Database is ready. Loading services and routes...');
+        console.log('Database is ready. Loading services...');
         await priceFeedService.initialize();
         console.log('Price Feed Service Initialized successfully.');
         await transactionListenerService.initialize();
