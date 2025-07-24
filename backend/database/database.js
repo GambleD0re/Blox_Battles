@@ -5,8 +5,10 @@ const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
 const util = require('util');
 
-// Define the path to the database file.
-const dbPath = path.join(__dirname, 'blox_battles.db');
+// [FIXED] Define the path to the database file dynamically.
+// It prioritizes the DATABASE_PATH environment variable for production (Render).
+// It falls back to the local path for local development.
+const dbPath = process.env.DATABASE_PATH || path.join(__dirname, 'blox_battles.db');
 
 // Create a new database connection object.
 const db = new sqlite3.Database(dbPath, (err) => {
@@ -15,7 +17,7 @@ const db = new sqlite3.Database(dbPath, (err) => {
         // If the database can't be opened, the app is non-functional. Exit the process.
         process.exit(1);
     } else {
-        console.log('Successfully connected to the SQLite database.');
+        console.log(`Successfully connected to the SQLite database at: ${dbPath}`);
     }
 });
 
