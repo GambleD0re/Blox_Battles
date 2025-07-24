@@ -21,11 +21,12 @@ services:
       - key: NODE_ENV
         value: production
       # --- Database Connection ---
-      # This securely injects the connection string from our managed database.
+      # CORRECTED: Using the valid 'connectionString' property. Render will automatically
+      # use the internal URL when services are in the same region.
       - key: DATABASE_URL
         fromDatabase:
           name: blox_battles_db
-          property: internalConnectionString
+          property: connectionString
       # --- Service URLs ---
       # These URLs are used for OAuth callbacks and other internal communication.
       # Render automatically provides the .onrender.com domain.
