@@ -1,3 +1,4 @@
+npm start
 // backend/server.js
 require('dotenv').config();
 
@@ -235,6 +236,10 @@ async function runScheduledTasks() {
 // --- API Routes ---
 const apiRoutes = require('./routes');
 app.use('/api', botLogger, apiRoutes);
+
+app.get('/api/health', (req, res) => {
+  res.status(200).send('OK');
+});
 
 // --- Server Startup ---
 app.listen(PORT, () => {
