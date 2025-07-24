@@ -4,46 +4,44 @@ const { Pool } = require('pg');
 const fs = require('fs');
 const path = require('path');
 
-// Check for the DATABASE_URL environment variable, which is standard for services like Render.
+// Check for the DATABASE_URL environment variable.
 if (!process.env.DATABASE_URL) {
   throw new Error("DATABASE_URL environment variable is not set. Please configure it in your deployment environment.");
 }
 
 // Create a new pool instance to connect to your PostgreSQL database.
-// The 'pg' library automatically uses the DATABASE_URL environment variable.
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  // If you're using this on a platform that requires SSL for database connections (like Render),
-  // you might need to enable it like this.
+  // This is often required for cloud database providers like Render.
   ssl: {
     rejectUnauthorized: false
   }
 });
 
-// Test the connection
-pool.query('SELECT NOW()', (err, res) => {
-  if (err) {
-    console.error('Error connecting to the PostgreSQL database', err.stack);
-  } else {
-    console.log('Successfully connected to the PostgreSQL database.');
-    // Initialize the database schema if it hasn't been initialized.
-    initializeSchema();
-  }
-});
-
-// Function to read the schema.sql file and execute it.
-const initializeSchema = async () => {
+/**
+ * Connects to the database and runs the schema.sql script to ensure
+ * all tables are created. This function will now be called explicitly
+ * at server startup.
+ */
+const initializeDatabase = async () => {
   try {
+    // 1. Test the connection
+    await pool.query('SELECT NOW()');
+    console.log('Successfully connected to the PostgreSQL database.');
+
+    // 2. Read and execute the schema file to create tables if they don't exist.
     const schemaSql = fs.readFileSync(path.join(__dirname, 'schema.sql')).toString();
     await pool.query(schemaSql);
     console.log('Database schema checked/initialized successfully.');
   } catch (err) {
-    console.error('Error initializing database schema:', err);
+    console.error('CRITICAL: Error during database initialization:', err);
+    // If the database can't be initialized, the application cannot run.
+    process.exit(1);
   }
 };
 
-// Export an object with a query method that uses the pool.
-// This makes it a near drop-in replacement for the old db object.
+// Export the query method and the new initialization function.
 module.exports = {
   query: (text, params) => pool.query(text, params),
+  initializeDatabase
 };
