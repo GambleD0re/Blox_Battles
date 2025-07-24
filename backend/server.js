@@ -18,7 +18,6 @@ const db = require('./database/database.js');
  */
 async function startServer() {
     // 1. Initialize the database FIRST.
-    // This is the most important step to prevent race conditions.
     await db.initializeDatabase();
 
     // 2. Now that the database is ready, load all services and routes.
@@ -38,6 +37,7 @@ async function startServer() {
     const subscriptionsRoutes = require('./routes/subscriptions');
     const paymentsRoutes = require('./routes/payments');
     const payoutsRoutes = require('./routes/payouts');
+    // --- THIS LINE IS NOW UNCOMMENTED ---
     const statusRoutes = require('./routes/status');
 
     const app = express();
@@ -56,7 +56,6 @@ async function startServer() {
         secret: process.env.SESSION_SECRET || 'supersecret',
         resave: false,
         saveUninitialized: false,
-        // In production, you'll want to use a proper session store like connect-pg-simple
         cookie: { secure: process.env.NODE_ENV === 'production' }
     }));
     app.use(passport.initialize());
@@ -71,6 +70,7 @@ async function startServer() {
     app.use('/api/subscriptions', subscriptionsRoutes);
     app.use('/api/payments', paymentsRoutes);
     app.use('/api/payouts', payoutsRoutes);
+    // --- THIS LINE IS NOW UNCOMMENTED ---
     app.use('/api/status', statusRoutes);
 
     // --- Cron Job for Expired Duels ---
@@ -87,17 +87,6 @@ async function startServer() {
             console.error('Error during expired duel cleanup cron job:', err);
         }
     });
-
-    // --- Serve Frontend Static Files ---
-    if (process.env.NODE_ENV === 'production') {
-        // This path correctly points from 'backend' to 'frontend/dist'
-        const frontendDistPath = path.resolve(__dirname, '..', 'frontend', 'dist');
-        app.use(express.static(frontendDistPath));
-        app.get('*', (req, res) => {
-            const indexPath = path.join(frontendDistPath, 'index.html');
-            res.sendFile(indexPath);
-        });
-    }
 
     // --- Server Activation ---
     const PORT = process.env.PORT || 3001;
