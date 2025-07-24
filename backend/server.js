@@ -37,13 +37,13 @@ async function startServer() {
     const subscriptionsRoutes = require('./routes/subscriptions');
     const paymentsRoutes = require('./routes/payments');
     const payoutsRoutes = require('./routes/payouts');
+    // --- THIS LINE MUST BE UNCOMMENTED ---
     const statusRoutes = require('./routes/status');
 
     const app = express();
     const server = http.createServer(app);
 
     // --- Middleware ---
-    // CORRECTED: This now uses process.env.SERVER_URL to match your render.yaml file.
     app.use(cors({
         origin: process.env.SERVER_URL || 'http://localhost:3000',
         credentials: true
@@ -70,6 +70,7 @@ async function startServer() {
     app.use('/api/subscriptions', subscriptionsRoutes);
     app.use('/api/payments', paymentsRoutes);
     app.use('/api/payouts', payoutsRoutes);
+    // --- THIS LINE MUST BE UNCOMMENTED ---
     app.use('/api/status', statusRoutes);
 
     // --- Cron Job for Expired Duels ---
