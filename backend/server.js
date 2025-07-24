@@ -8,7 +8,7 @@ const db = require('./database/database');
 const path = require('path');
 const cron = require('node-cron');
 
-// Import services and routes 
+// Import services and routes
 const priceFeedService = require('./services/priceFeedService');
 const transactionListenerService = require('./services/transactionListenerService');
 const hdWalletService = require('./services/hdWalletService');
@@ -21,24 +21,23 @@ const gameDataRoutes = require('./routes/gameData');
 const historyRoutes = require('./routes/history');
 const inboxRoutes = require('./routes/inbox');
 const leaderboardRoutes = require('./routes/leaderboard');
-const logRoutes = require('./routes/logs'); // For viewing server logs
+const logRoutes = require('./routes/logs');
 const paymentRoutes = require('./routes/payments');
 const payoutRoutes = require('./routes/payouts');
 const statusRoutes = require('./routes/status');
 const subscriptionRoutes = require('./routes/subscriptions');
 const taskRoutes = require('./routes/tasks');
 const userRoutes = require('./routes/users');
-const botRoutes = require('./routes/bot'); // For receiving bot events
-const { cleanupExpiredDuels } = require('./utils/duelUtils');
+const botRoutes = require('./routes/bot');
+// REMOVED: const { cleanupExpiredDuels } = require('./utils/duelUtils'); // This file does not exist
 
 const app = express();
 const PORT = process.env.PORT || 10000;
 
 // --- CORS Configuration ---
-// This explicitly allows your deployed frontend to make requests to this backend.
 const allowedOrigins = [
     'https://blox-battles-web.onrender.com',
-    'http://localhost:5173' // For local development
+    'http://localhost:5173'
 ];
 
 const corsOptions = {
@@ -58,19 +57,17 @@ app.use(cors(corsOptions));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Session configuration
 app.use(session({
     secret: process.env.SESSION_SECRET,
     resave: false,
     saveUninitialized: false,
     cookie: {
-        secure: process.env.NODE_ENV === 'production', // Use secure cookies in production
+        secure: process.env.NODE_ENV === 'production',
         httpOnly: true,
-        maxAge: 24 * 60 * 60 * 1000 // 24 hours
+        maxAge: 24 * 60 * 60 * 1000
     }
 }));
 
-// Passport initialization
 app.use(passport.initialize());
 app.use(passport.session());
 
@@ -91,7 +88,7 @@ app.use('/api/status', statusRoutes);
 app.use('/api/subscriptions', subscriptionRoutes);
 app.use('/api/tasks', taskRoutes);
 app.use('/api/user', userRoutes);
-app.use('/api/bot', botRoutes); // Activate the new bot route
+app.use('/api/bot', botRoutes);
 console.log("--- Finished loading backend routes. ---");
 
 
@@ -111,11 +108,11 @@ async function initializeApp() {
         await hdWalletService.initialize();
         console.log('HD Wallet Service Initialized successfully.');
 
-        // Schedule cron jobs
-        cron.schedule('*/5 * * * *', () => {
-            console.log('Running scheduled job: Cleaning up expired duels...');
-            cleanupExpiredDuels();
-        });
+        // REMOVED: The cron job that depended on the missing file.
+        // cron.schedule('*/5 * * * *', () => {
+        //     console.log('Running scheduled job: Cleaning up expired duels...');
+        //     cleanupExpiredDuels();
+        // });
 
         app.listen(PORT, () => {
             console.log(`Server is running on port ${PORT}`);
