@@ -29,7 +29,6 @@ const subscriptionRoutes = require('./routes/subscriptions');
 const taskRoutes = require('./routes/tasks');
 const userRoutes = require('./routes/users');
 const botRoutes = require('./routes/bot');
-// REMOVED: const { cleanupExpiredDuels } = require('./utils/duelUtils'); // This file does not exist
 
 const app = express();
 const PORT = process.env.PORT || 10000;
@@ -95,10 +94,12 @@ console.log("--- Finished loading backend routes. ---");
 // --- Database and Service Initialization ---
 async function initializeApp() {
     try {
-        await db.connect();
-        console.log('Successfully connected to the PostgreSQL database.');
+        // The pg Pool connects automatically on the first query.
+        // There is no need for an explicit db.connect() call.
+        // We will verify the connection by initializing the schema.
         await db.initSchema();
         console.log('Database schema checked/initialized successfully.');
+        console.log('Successfully connected to the PostgreSQL database.');
 
         console.log('Database is ready. Loading services...');
         await priceFeedService.initialize();
@@ -107,12 +108,6 @@ async function initializeApp() {
         console.log('Transaction Listener Service Initialized.');
         await hdWalletService.initialize();
         console.log('HD Wallet Service Initialized successfully.');
-
-        // REMOVED: The cron job that depended on the missing file.
-        // cron.schedule('*/5 * * * *', () => {
-        //     console.log('Running scheduled job: Cleaning up expired duels...');
-        //     cleanupExpiredDuels();
-        // });
 
         app.listen(PORT, () => {
             console.log(`Server is running on port ${PORT}`);
