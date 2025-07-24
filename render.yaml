@@ -6,91 +6,89 @@
 # Defines the services for the application. The order matters for dependencies.
 # We define the database first, then the backend, then the frontend.
 services:
-  # --- Backend API Service (Node.js) ---
-  # This is the core Express.js server that handles all application logic.
-  - type: web
-    name: blox_battles_api
-    runtime: node
-    plan: starter # Corresponds to the lowest paid web service plan.
-    region: oregon # You can change this to a region closer to you or your users.
-    rootDir: ./backend # Specifies that the backend code is in the 'backend' folder.
-    buildCommand: npm install
-    startCommand: node server.js
-    healthCheckPath: /api/status # Endpoint to check if the service is running.
-    envVars:
-      - key: NODE_ENV
-        value: production
-      # --- Database Connection ---
-      # Using 'internalConnectionString' for secure, fast, internal traffic.
-      - key: DATABASE_URL
-        fromDatabase:
-          name: blox_battles_db
-          property: internalConnectionString
-      # --- Service URLs ---
-      # These URLs are used for OAuth callbacks and other internal communication.
-      # Render automatically provides the .onrender.com domain.
-      - key: SERVER_URL # Base URL of the frontend
-        # CORRECTED: URL now uses an underscore to match the service name.
-        value: https://blox_battles_web.onrender.com
-      - key: BACKEND_URL # Base URL of this backend service
-        value: https://blox_battles_api.onrender.com
-      # --- Secrets ---
-      # All secrets are marked with 'sync: false'.
-      # This tells Render to prompt you for the values in the dashboard
-      # during the initial setup, keeping them out of your repository.
-      - key: JWT_SECRET
-        sync: false
-      - key: SESSION_SECRET
-        sync: false
-      - key: GOOGLE_CLIENT_ID
-        sync: false
-      - key: GOOGLE_CLIENT_SECRET
-        sync: false
-      - key: BOT_API_KEY
-        sync: false
-      - key: ADMIN_TEST_API_KEY
-        sync: false
-      - key: STRIPE_SECRET_KEY
-        sync: false
-      - key: STRIPE_WEBHOOK_SECRET
-        sync: false
-      - key: ALCHEMY_POLYGON_URL
-        sync: false
-      - key: ALCHEMY_API_KEY
-        sync: false
-      - key: MASTER_XPUB
-        sync: false
-      - key: PAYOUT_WALLET_PRIVATE_KEY
-        sync: false
+  # --- Backend API Service (Node.js) ---
+  # This is the core Express.js server that handles all application logic.
+  - type: web
+    name: blox_battles_api
+    runtime: node
+    plan: starter # Corresponds to the lowest paid web service plan.
+    region: oregon # You can change this to a region closer to you or your users.
+    rootDir: ./backend # Specifies that the backend code is in the 'backend' folder.
+    buildCommand: npm install
+    startCommand: node server.js
+    healthCheckPath: /api/status # Endpoint to check if the service is running.
+    envVars:
+      - key: NODE_ENV
+        value: production
+      # --- Database Connection ---
+      # This securely injects the connection string from our managed database.
+      - key: DATABASE_URL
+        fromDatabase:
+          name: blox_battles_db
+          property: internalConnectionString
+      # --- Service URLs ---
+      # These URLs are used for OAuth callbacks and other internal communication.
+      # Render automatically provides the .onrender.com domain.
+      - key: SERVER_URL # Base URL of the frontend
+        value: https://blox_battles_web.onrender.com
+      - key: BACKEND_URL # Base URL of this backend service
+        value: https://blox_battles_api.onrender.com
+      # --- Secrets ---
+      # All secrets are marked with 'sync: false'.
+      # This tells Render to prompt you for the values in the dashboard
+      # during the initial setup, keeping them out of your repository.
+      - key: JWT_SECRET
+        sync: false
+      - key: SESSION_SECRET
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: BOT_API_KEY
+        sync: false
+      - key: ADMIN_TEST_API_KEY
+        sync: false
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false
+      - key: ALCHEMY_POLYGON_URL
+        sync: false
+      - key: ALCHEMY_API_KEY
+        sync: false
+      - key: MASTER_XPUB
+        sync: false
+      - key: PAYOUT_WALLET_PRIVATE_KEY
+        sync: false
 
-  # --- Frontend Web Service (React Static Site) ---
-  # This serves the user-facing React application from a global CDN.
-  - type: web
-    # CORRECTED: Service name now uses an underscore.
-    name: blox_battles_web
-    runtime: static # Static sites can also use the 'free' plan.
-    # The 'region' key has been removed as it is not applicable to Static Sites.
-    rootDir: ./frontend # Specifies that the frontend code is in the 'frontend' folder.
-    buildCommand: npm install && npm run build
-    staticPublishPath: ./dist # The folder where Vite places the built static files.
-    # --- Routing for Single-Page Application (SPA) ---
-    # This rule is essential for React Router to work correctly. It ensures that
-    # any request that doesn't match a static file is redirected to index.html,
-    # allowing the React app to handle the routing.
-    routes:
-      - type: rewrite
-        source: /.*
-        destination: /index.html
-    envVars:
-      # --- Frontend Environment Variables ---
-      # These are injected into the React app during the build process.
-      - key: VITE_API_URL
-        value: https://blox_battles_api.onrender.com/api
-      - key: VITE_STRIPE_PUBLISHABLE_KEY
-        sync: false # Prompt for this value in the Render dashboard.
+  # --- Frontend Web Service (React Static Site) ---
+  # This serves the user-facing React application from a global CDN.
+  - type: web
+    name: blox_battles_web
+    runtime: static # Static sites can also use the 'free' plan.
+    # The 'region' key has been removed as it is not applicable to Static Sites.
+    rootDir: ./frontend # Specifies that the frontend code is in the 'frontend' folder.
+    buildCommand: npm install && npm run build
+    staticPublishPath: ./dist # The folder where Vite places the built static files.
+    # --- Routing for Single-Page Application (SPA) ---
+    # This rule is essential for React Router to work correctly. It ensures that
+    # any request that doesn't match a static file is redirected to index.html,
+    # allowing the React app to handle the routing.
+    routes:
+      - type: rewrite
+        source: /.*
+        destination: /index.html
+    envVars:
+      # --- Frontend Environment Variables ---
+      # These are injected into the React app during the build process.
+      - key: VITE_API_URL
+        value: https://blox_battles_api.onrender.com/api
+      - key: VITE_STRIPE_PUBLISHABLE_KEY
+        sync: false # Prompt for this value in the Render dashboard.
 
 # Defines the PostgreSQL database for the application.
 databases:
-  - name: blox_battles_db
-    plan: basic-256mb # The plan you specified.
-    region: oregon # IMPORTANT: Starts with no external access. Add IPs if direct access is needed.
+  - name: blox_battles_db
+    plan: basic-256mb # The plan you specified.
+    region: oregon # IMPORTANT: Starts with no external access. Add IPs if direct access is needed.
